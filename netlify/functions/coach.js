@@ -1,4 +1,3 @@
-js
 // This runs on Netlify's server, never in the visitor's browser.
 // It keeps the Anthropic API key private and relays coach conversations to Claude.
 exports.handler = async (event) => {
