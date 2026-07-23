@@ -62,7 +62,7 @@
     padding:0;
     display:flex;
     flex-direction:column;
-    max-width:900px;
+    max-width:1300px;
     margin:0 auto;
     border-left:1px solid var(--line);
     border-right:1px solid var(--line);
@@ -226,6 +226,25 @@
   .sc-msg.coach.practical .sc-body p{ margin:0 0 0.6em; }
   .sc-msg.coach.practical .sc-body p:last-child{ margin-bottom:0; }
 
+  .sc-msg-actions{
+    display:flex;
+    gap:8px;
+    margin-top:10px;
+  }
+  .sc-action-btn{
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.625em;
+    letter-spacing:0.04em;
+    background:transparent;
+    border:1px solid var(--line);
+    color:var(--text-lo);
+    padding:5px 10px;
+    border-radius:5px;
+    cursor:pointer;
+  }
+  .sc-action-btn:hover{ border-color:var(--meaning); color:var(--parchment); }
+  .sc-action-btn.done{ border-color:var(--evidence); color:var(--evidence); }
+
   /* ---- Mode-switch divider ---- */
   .sc-mode-divider{
     align-self:center;
@@ -237,6 +256,43 @@
     padding:2px 10px;
     border-top:1px solid var(--line);
     border-bottom:1px solid var(--line);
+  }
+
+  /* ---- Welcome back banner ---- */
+  .sc-welcome-back{
+    display:none;
+    margin:16px 28px 0;
+    padding:14px 16px;
+    background:var(--ink-2);
+    border:1px solid var(--meaning);
+    border-radius:8px;
+    align-items:center;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    gap:10px;
+  }
+  .sc-welcome-back.visible{ display:flex; }
+  .sc-welcome-back p{
+    font-size:0.8125em;
+    color:var(--text-hi);
+    margin:0;
+  }
+  .sc-welcome-back .sc-wb-actions{ display:flex; gap:8px; flex-shrink:0; }
+  .sc-wb-btn{
+    font-family:'Inter',sans-serif;
+    font-size:0.75em;
+    font-weight:600;
+    padding:7px 14px;
+    border-radius:6px;
+    cursor:pointer;
+    border:1px solid var(--line);
+    background:transparent;
+    color:var(--text-lo);
+  }
+  .sc-wb-btn.primary{
+    background:var(--meaning);
+    color:var(--ink);
+    border-color:var(--meaning);
   }
 
   /* ---- Starter chips ---- */
@@ -270,7 +326,7 @@
   }
 
   .sc-msg{
-    max-width:min(88%, 640px);
+    max-width:min(88%, 980px);
     line-height:1.55;
   }
   .sc-msg.user{
@@ -436,6 +492,14 @@
     </div>
   </div>
 
+  <div class="sc-welcome-back" id="sc-welcome-back">
+    <p id="sc-wb-text">Welcome back — you have a previous conversation waiting.</p>
+    <div class="sc-wb-actions">
+      <button class="sc-wb-btn primary" id="sc-wb-resume">Resume</button>
+      <button class="sc-wb-btn" id="sc-wb-fresh">Start Fresh</button>
+    </div>
+  </div>
+
   <div class="sc-chips" id="sc-chips">
     <button class="sc-chip" data-q="If the universe had a beginning, does it follow that it had an intelligent creator?">A beginning implies an intelligent creator?</button>
     <button class="sc-chip" data-q="Is a 'fine-tuned' universe the same thing as a designed one?">Fine-tuned = designed?</button>
@@ -481,6 +545,7 @@
   const chipsWrap = document.getElementById('sc-chips');
 
   let history = [];
+  let messageUIModes = [];
   let tilt = 0; // -1 (evidence) .. +1 (meaning)
   let currentMode = 'socratic';
 
@@ -613,6 +678,63 @@
 
   setMode('socratic', { silent: true });
 
+  /* ---- Session memory: remember where a reader left off, via localStorage ---- */
+  const SESSION_KEY = 'sc-session';
+  const wbBanner = document.getElementById('sc-welcome-back');
+  const wbText = document.getElementById('sc-wb-text');
+  const wbResume = document.getElementById('sc-wb-resume');
+  const wbFresh = document.getElementById('sc-wb-fresh');
+
+  function saveSession(){
+    try{
+      localStorage.setItem(SESSION_KEY, JSON.stringify({
+        history: history,
+        messageUIModes: messageUIModes,
+        mode: currentMode,
+        savedAt: Date.now()
+      }));
+    } catch(e){ /* storage full or unavailable — fail silently, not critical */ }
+  }
+
+  function clearSession(){
+    try{ localStorage.removeItem(SESSION_KEY); } catch(e){}
+  }
+
+  function checkForSavedSession(){
+    let saved;
+    try{
+      const raw = localStorage.getItem(SESSION_KEY);
+      if(!raw) return;
+      saved = JSON.parse(raw);
+    } catch(e){ return; }
+    if(!saved || !saved.history || !saved.history.length) return;
+
+    const count = saved.history.filter(function(m){ return m.role === 'user'; }).length;
+    wbText.textContent = 'Welcome back — you have a previous conversation (' + count + (count === 1 ? ' question' : ' questions') + ') waiting.';
+    wbBanner.classList.add('visible');
+
+    wbResume.addEventListener('click', function(){
+      history = saved.history;
+      messageUIModes = saved.messageUIModes || history.map(function(){ return null; });
+      setMode(saved.mode || 'socratic', { silent: true });
+      history.forEach(function(m, i){
+        addMessage(m.role === 'user' ? 'user' : 'coach', m.content, messageUIModes[i]);
+      });
+      if(currentMode === 'socratic' && history.length){
+        const lastCoach = [...history].reverse().find(function(m){ return m.role === 'assistant'; });
+        if(lastCoach) updateBeam(lastCoach.content);
+      }
+      wbBanner.classList.remove('visible');
+    });
+
+    wbFresh.addEventListener('click', function(){
+      clearSession();
+      wbBanner.classList.remove('visible');
+    });
+  }
+
+  checkForSavedSession();
+
   /* ---- Lightweight markdown for Practical-mode replies ---- */
   function escapeHtml(s){
     return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -738,7 +860,20 @@
 
 5. THE GOSPEL: Framed as "not a religion but a relationship" with the Creator. Sin is presented as universal and inborn (illustrated by how small children behave before anyone teaches them to share), not a matter of being worse than other people. The Ten Commandments are framed not as a checklist to earn God's favor but as a mirror showing we can't live perfectly on our own — "when God says don't do something, He is really saying don't hurt yourself." The book imagines Jesus speaking directly to the reader: acknowledging their sin, offering forgiveness through His death and resurrection, and the promise of eternal life. It uses the story of the rich man and Lazarus (Luke 16) to show that eternal separation from God is ultimately a person's own choice, not God turning them away. For a reader who is ready, the book includes an actual prayer: acknowledging sin, believing Jesus died and rose again, asking Him in, and committing to follow Him — followed by encouragement to find a local church.
 
-6. CONCLUSIONS: The book closes arguing science is simply the study of how God created the universe, and that a genuinely honest use of the scientific method will always align with scripture in the end. It calls for seminaries to take science more seriously rather than treating it with suspicion. It closes on Romans 1:18-21 — that God's nature has been clearly seen through what He made, "so that they are without excuse" — pointing to the genetic code, a dying star, and a newborn baby as everyday evidence of the Creator hiding in plain sight.`;
+6. CONCLUSIONS: The book closes arguing science is simply the study of how God created the universe, and that a genuinely honest use of the scientific method will always align with scripture in the end. It calls for seminaries to take science more seriously rather than treating it with suspicion. It closes on Romans 1:18-21 — that God's nature has been clearly seen through what He made, "so that they are without excuse" — pointing to the genetic code, a dying star, and a newborn baby as everyday evidence of the Creator hiding in plain sight.
+
+SECTION LABELS FOR CITATION (use these exact short names when pointing to where something comes from):
+- Section 1 → "the book's opening chapter" or "the introduction"
+- Section 2 → "Terry's own story" or "the personal-story chapter"
+- Section 3 → "the chapter on the history of science and the Church"
+- Section 4 → "the seven evidences chapter" — and for individual evidences within it: "the Big Bang / universe's beginning section," "the time-and-eternity section," "the age-of-the-universe section," "the extra-dimensions section," "the Darwinism section," or "the DNA chapter"
+- Section 5 → "the Gospel chapter"
+- Section 6 → "the closing chapter"`;
+
+  const CITATION_INSTRUCTIONS = `
+
+CITING YOUR SOURCE:
+When you draw on a specific fact, quote, or argument from the book, briefly name where it comes from using the section labels above (e.g., "as the DNA chapter lays out..." or "the book's closing chapter puts it this way..."). Do this naturally, in passing, not as a formal citation or footnote — it should read like part of the sentence, not an academic reference. Only name a source when you're actually drawing on specific book content; don't force a citation into every single reply. Never fabricate a quote or attribute words to the book it doesn't actually contain — if you're characterizing an idea in your own words, say so plainly rather than implying it's a direct quote.`;
 
   const SOCRATIC_INSTRUCTIONS = `
 
@@ -770,8 +905,18 @@ Rules you always follow:
 - Represent the book's arguments and the Gospel content faithfully and respectfully — don't soften or alter what it actually says.
 - Do not break character to explain that you are an AI or describe your method.`;
 
+  const ONBOARDING_CONTEXT = {
+    skeptic: '\n\nREADER CONTEXT: This reader identified themselves as approaching the book as a skeptic. Be extra patient with objections — treat doubt as healthy and expected, never as something to overcome quickly. Lean on evidence and reasoning before meaning or faith language, and let them set the pace entirely; never make them feel rushed toward belief.',
+    seeker: '\n\nREADER CONTEXT: This reader identified themselves as a curious seeker. They\'re open but undecided — balance evidence and meaning naturally, follow their curiosity wherever it leads, and don\'t assume too much familiarity with either science or faith language.',
+    believer: '\n\nREADER CONTEXT: This reader identified themselves as already a believer. You don\'t need to build a basic case for God\'s existence — instead, help them go deeper: richer detail, more nuanced questions, and ways this material strengthens or enriches a faith they already hold.'
+  };
+
   function getSystemPrompt(){
-    return BOOK_CONTEXT + (currentMode === 'practical' ? PRACTICAL_INSTRUCTIONS : SOCRATIC_INSTRUCTIONS);
+    const base = BOOK_CONTEXT + CITATION_INSTRUCTIONS;
+    const modeInstructions = currentMode === 'practical' ? PRACTICAL_INSTRUCTIONS : SOCRATIC_INSTRUCTIONS;
+    const onboarding = localStorage.getItem('sc-onboarding');
+    const readerContext = ONBOARDING_CONTEXT[onboarding] || '';
+    return base + modeInstructions + readerContext;
   }
 
   function addMessage(role, text, mode){
@@ -784,6 +929,27 @@ Rules you always follow:
       div.className = 'sc-msg coach practical';
       div.innerHTML = '<span class="sc-q-mark">the coach suggests —</span><span class="sc-body"></span>';
       div.querySelector('.sc-body').innerHTML = formatPracticalText(text);
+
+      const actions = document.createElement('div');
+      actions.className = 'sc-msg-actions';
+
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'sc-action-btn';
+      copyBtn.textContent = '📋 Copy';
+      copyBtn.addEventListener('click', function(){
+        copyText(text, copyBtn);
+      });
+
+      const pdfBtn = document.createElement('button');
+      pdfBtn.className = 'sc-action-btn';
+      pdfBtn.textContent = '🖨️ Save as PDF';
+      pdfBtn.addEventListener('click', function(){
+        saveAsPDF(text);
+      });
+
+      actions.appendChild(copyBtn);
+      actions.appendChild(pdfBtn);
+      div.appendChild(actions);
     } else {
       div.className = 'sc-msg coach';
       div.innerHTML = '<span class="sc-q-mark">the coach gently asks —</span><span class="sc-body"></span>';
@@ -792,6 +958,57 @@ Rules you always follow:
     thread.appendChild(div);
     thread.scrollTop = thread.scrollHeight;
     return div;
+  }
+
+  /* ---- Shareable outputs: copy and print-to-PDF for Practical mode ---- */
+  function copyText(text, btn){
+    const done = function(){
+      const original = btn.textContent;
+      btn.textContent = '✓ Copied';
+      btn.classList.add('done');
+      setTimeout(function(){
+        btn.textContent = original;
+        btn.classList.remove('done');
+      }, 1800);
+    };
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(done).catch(function(){
+        fallbackCopy(text); done();
+      });
+    } else {
+      fallbackCopy(text); done();
+    }
+  }
+
+  function fallbackCopy(text){
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try{ document.execCommand('copy'); } catch(e){}
+    document.body.removeChild(ta);
+  }
+
+  function saveAsPDF(text){
+    const w = window.open('', '_blank');
+    if(!w) return;
+    const bodyHtml = formatPracticalText(text);
+    w.document.write(
+      '<html><head><title>REVEALED Book Coach — Notes</title>' +
+      '<style>' +
+      'body{font-family:Georgia,serif; max-width:680px; margin:40px auto; padding:0 24px; color:#1a1a1a; line-height:1.6;}' +
+      'h4{margin:1.2em 0 0.4em;} ul,ol{margin:0.4em 0 0.8em 1.3em;} p{margin:0 0 0.8em;}' +
+      '.hdr{font-size:12px; letter-spacing:0.06em; text-transform:uppercase; color:#888; margin-bottom:4px;}' +
+      '</style></head><body>' +
+      '<div class="hdr">REVEALED Book Coach — Practical Mode</div>' +
+      bodyHtml +
+      '</body></html>'
+    );
+    w.document.close();
+    w.focus();
+    setTimeout(function(){ w.print(); }, 300);
   }
 
   function setTyping(on){
@@ -828,6 +1045,8 @@ Rules you always follow:
 
     addMessage('user', text);
     history.push({ role: 'user', content: text });
+    messageUIModes.push(null);
+    saveSession();
     setTyping(true);
 
     try{
@@ -857,6 +1076,8 @@ Rules you always follow:
       setTyping(false);
       addMessage('coach', reply, currentMode);
       history.push({ role: 'assistant', content: reply });
+      messageUIModes.push(currentMode);
+      saveSession();
       if(currentMode === 'socratic') updateBeam(reply);
       speak(reply);
     } catch(err){
