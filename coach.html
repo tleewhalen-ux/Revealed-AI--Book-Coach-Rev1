@@ -298,8 +298,8 @@
     font-family:'Source Serif 4',serif;
     font-size:1.0625em;
     color:var(--parchment);
-    font-style:italic;
-    line-height:1.6;
+    font-style:normal;
+    line-height:1.75;
   }
 
   .sc-empty{
@@ -520,9 +520,9 @@
   const SIZE_LABELS = { sm:'S', md:'M', lg:'L', xl:'XL' };
 
   const prefs = {
-    theme: localStorage.getItem('sc-theme') || 'black',
+    theme: localStorage.getItem('sc-theme') || 'white',
     font: localStorage.getItem('sc-font') || 'serif',
-    size: localStorage.getItem('sc-size') || 'md',
+    size: localStorage.getItem('sc-size') || 'lg',
     listen: false
   };
 
