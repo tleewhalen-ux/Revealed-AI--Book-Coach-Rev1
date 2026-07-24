@@ -125,35 +125,45 @@
     display:flex;
     align-items:center;
     flex-wrap:wrap;
-    gap:8px;
+    gap:10px;
     margin-top:16px;
+    padding:10px 12px;
+    background:rgba(0,0,0,0.28);
+    border:1px solid var(--line);
+    border-radius:10px;
   }
   .sc-tool-btn{
     background:var(--ink-2);
     border:1px solid var(--line);
-    color:var(--text-lo);
+    color:var(--text-hi);
     font-family:'JetBrains Mono',monospace;
-    font-size:0.6875em;
+    font-size:0.8125em;
+    font-weight:500;
     letter-spacing:0.04em;
-    padding:5px 9px;
+    padding:8px 14px;
     border-radius:6px;
     cursor:pointer;
-    transition:border-color 0.15s, color 0.15s;
+    transition:border-color 0.15s, color 0.15s, background 0.15s;
     white-space:nowrap;
   }
   .sc-tool-btn:hover{ border-color:var(--meaning); color:var(--parchment); }
-  .sc-tool-btn.active{ border-color:var(--evidence); color:var(--evidence); }
+  .sc-tool-btn.active{
+    border-color:var(--evidence);
+    color:var(--ink);
+    background:var(--evidence);
+    font-weight:600;
+  }
   .sc-tool-btn:disabled{ opacity:0.35; cursor:default; }
   .sc-tool-btn:disabled:hover{ border-color:var(--line); color:var(--text-lo); }
 
   .sc-theme-group{
     display:flex;
     align-items:center;
-    gap:2px;
-    background:var(--ink-2);
+    gap:3px;
+    background:rgba(0,0,0,0.35);
     border:1px solid var(--line);
-    border-radius:6px;
-    padding:2px;
+    border-radius:8px;
+    padding:3px;
   }
   .sc-theme-group .sc-tool-btn{
     background:transparent;
@@ -163,33 +173,34 @@
   .sc-font-group{
     display:flex;
     align-items:center;
-    gap:4px;
-    background:var(--ink-2);
+    gap:5px;
+    background:rgba(0,0,0,0.35);
     border:1px solid var(--line);
-    border-radius:6px;
-    padding:2px;
+    border-radius:8px;
+    padding:3px;
   }
   .sc-font-group .sc-tool-btn{
     background:transparent;
     border:none;
-    padding:4px 7px;
+    padding:6px 9px;
   }
   .sc-font-label{
     font-family:'JetBrains Mono',monospace;
-    font-size:0.6875em;
-    color:var(--text-lo);
-    width:16px;
+    font-size:0.8125em;
+    color:var(--text-hi);
+    width:18px;
     text-align:center;
   }
 
   /* ---- Mode toggle ---- */
   .sc-toolbar-label{
     font-family:'JetBrains Mono',monospace;
-    font-size:0.625em;
+    font-size:0.75em;
+    font-weight:600;
     letter-spacing:0.08em;
     text-transform:uppercase;
-    color:var(--text-lo);
-    margin-right:-2px;
+    color:var(--text-hi);
+    margin-right:2px;
   }
 
   .sc-root[data-mode="practical"] .sc-beam-wrap{ display:none; }
@@ -397,6 +408,38 @@
     max-height:120px;
   }
   .sc-input:focus{border-color:var(--evidence);}
+  .sc-input.sc-input-pending{
+    border-color:var(--meaning);
+    animation:sc-pulse 1.3s ease-out 1;
+  }
+  .sc-autosend-bar{
+    display:none;
+    align-items:center;
+    justify-content:center;
+    gap:12px;
+    padding:6px 20px;
+    background:var(--ink-2);
+    border-top:1px solid var(--line);
+  }
+  .sc-autosend-bar.visible{ display:flex; }
+  .sc-autosend-text{
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.6875em;
+    letter-spacing:0.03em;
+    color:var(--meaning);
+  }
+  .sc-autosend-cancel-btn{
+    font-family:'JetBrains Mono',monospace;
+    font-size:0.625em;
+    letter-spacing:0.04em;
+    background:transparent;
+    border:1px solid var(--meaning);
+    color:var(--meaning);
+    padding:3px 10px;
+    border-radius:5px;
+    cursor:pointer;
+  }
+  .sc-autosend-cancel-btn:hover{ background:var(--meaning); color:var(--ink); }
   .sc-input::placeholder{color:var(--text-lo);}
 
   .sc-mic{
@@ -512,6 +555,11 @@
     <div class="sc-empty" id="sc-empty-state">
       Tell me what's on your mind — a claim from the book, a doubt a reader raised, an argument you're not sure holds up. <b>I'll walk with you through it,</b> asking questions that open things up rather than shutting them down. Or tap one of the starters above.
     </div>
+  </div>
+
+  <div class="sc-autosend-bar" id="sc-autosend-bar">
+    <span class="sc-autosend-text">⏱ Sending in a moment…</span>
+    <button id="sc-autosend-cancel" class="sc-autosend-cancel-btn">Cancel</button>
   </div>
 
   <div class="sc-inputbar">
@@ -803,15 +851,61 @@
     });
   }
 
+  let cachedVoices = [];
+  function refreshVoices(){
+    if(speechSupported) cachedVoices = window.speechSynthesis.getVoices();
+  }
+  refreshVoices();
+  if(speechSupported && 'onvoiceschanged' in window.speechSynthesis){
+    window.speechSynthesis.onvoiceschanged = refreshVoices;
+  }
+
+  function getPreferredVoice(){
+    const savedURI = localStorage.getItem('sc-voice-uri');
+    if(!savedURI) return null;
+    if(!cachedVoices.length) refreshVoices();
+    return cachedVoices.find(function(v){ return v.voiceURI === savedURI; }) || null;
+  }
+
   function speak(text){
     if(!speechSupported || !prefs.listen) return;
     window.speechSynthesis.cancel();
     const utter = new SpeechSynthesisUtterance(text);
     utter.rate = 0.98;
+    const preferred = getPreferredVoice();
+    if(preferred) utter.voice = preferred;
     window.speechSynthesis.speak(utter);
   }
 
   /* ---- Talk: speech-to-text input (Web Speech API) ---- */
+  /* Auto-send: after a spoken question finishes transcribing, send it
+     automatically once 1.3s passes with no further edits — so a hands-free
+     reader never has to reach for the Ask button. Any manual typing or a
+     fresh mic tap cancels the pending send. */
+  let autoSendTimer = null;
+  const autoSendBar = document.getElementById('sc-autosend-bar');
+  const autoSendCancelBtn = document.getElementById('sc-autosend-cancel');
+  function clearAutoSend(){
+    if(autoSendTimer){ clearTimeout(autoSendTimer); autoSendTimer = null; }
+    input.classList.remove('sc-input-pending');
+    autoSendBar.classList.remove('visible');
+  }
+  function armAutoSend(){
+    clearAutoSend();
+    input.classList.add('sc-input-pending');
+    autoSendBar.classList.add('visible');
+    autoSendTimer = setTimeout(function(){
+      autoSendTimer = null;
+      input.classList.remove('sc-input-pending');
+      autoSendBar.classList.remove('visible');
+      if(input.value.trim()) send();
+    }, 1300);
+  }
+  autoSendCancelBtn.addEventListener('click', function(){
+    clearAutoSend();
+    input.focus();
+  });
+
   const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
   let recognizing = false;
   if(SpeechRecognitionCtor){
@@ -825,6 +919,7 @@
       input.value = (input.value.trim() ? input.value.trim() + ' ' : '') + transcript;
       input.dispatchEvent(new Event('input'));
       input.focus();
+      armAutoSend();
     };
     recognition.onend = function(){
       recognizing = false;
@@ -833,8 +928,10 @@
     recognition.onerror = function(){
       recognizing = false;
       micBtn.classList.remove('recording');
+      clearAutoSend();
     };
     micBtn.addEventListener('click', function(){
+      clearAutoSend();
       if(recognizing){
         recognition.stop();
         return;
@@ -1037,6 +1134,7 @@ Rules you always follow:
   }
 
   async function send(){
+    clearAutoSend();
     const text = input.value.trim();
     if(!text) return;
     input.value = '';
@@ -1099,6 +1197,7 @@ Rules you always follow:
 
   sendBtn.addEventListener('click', send);
   input.addEventListener('keydown', function(e){
+    clearAutoSend();
     if(e.key === 'Enter' && !e.shiftKey){
       e.preventDefault();
       send();
